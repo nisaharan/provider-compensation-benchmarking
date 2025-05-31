@@ -114,6 +114,8 @@ CREATE TABLE IF NOT EXISTS "survey_benchmark_data"."final outputs"."amga" (
     region VARCHAR
 );
 
+-- Insert and clean AMGA data from all years (2020–2024)
+-- Remove commas, cast types, and union all years
 INSERT INTO "survey_benchmark_data"."final outputs"."amga" (
     "data year", 
     "survey year", 
@@ -236,13 +238,14 @@ SELECT
 FROM survey_benchmark_data.amga_survey_data."amga 2020 survey 2019 data";
 
 
--- Clean 1: 
+-- Clean 1: Clean up AMGA output table: rename, drop, and normalize columns
 alter table "survey_benchmark_data"."final outputs"."amga" RENAME column "specialty name" to "specialty"
 alter table "survey_benchmark_data"."final outputs"."amga" RENAME column "provider count" to "count"
 alter table "survey_benchmark_data"."final outputs"."amga" DROP column MEAN
 alter table "survey_benchmark_data"."final outputs"."amga" DROP column "standard deviation"
 alter table "survey_benchmark_data"."final outputs"."amga" DROP column "group count"
 
+-- Normalize metric names for consistency
 UPDATE "survey_benchmark_data"."final outputs"."amga"
 SET "Metric" = 'Comp per wRVU'
 WHERE "Metric" IN ('Comp per wRVU', 'Compensation per wRVU')
@@ -251,6 +254,7 @@ UPDATE "survey_benchmark_data"."final outputs"."amga"
 SET "Metric" = 'Total Compensation'
 WHERE "Metric" IN ('Total Compensation', 'Compensation')
 
+-- Add columns for interpolated percentiles (21–89, excluding 20, 25, 50, 75, 90)
 ALTER TABLE "survey_benchmark_data"."final outputs"."amga" ADD COLUMN "21" NUMERIC(10,2);
 ALTER TABLE "survey_benchmark_data"."final outputs"."amga" ADD COLUMN "22" NUMERIC(10,2);
 ALTER TABLE "survey_benchmark_data"."final outputs"."amga" ADD COLUMN "23" NUMERIC(10,2);
@@ -321,7 +325,7 @@ ALTER TABLE "survey_benchmark_data"."final outputs"."amga" ADD COLUMN "87" NUMER
 ALTER TABLE "survey_benchmark_data"."final outputs"."amga" ADD COLUMN "88" NUMERIC(10,2);
 ALTER TABLE "survey_benchmark_data"."final outputs"."amga" ADD COLUMN "89" NUMERIC(10,2);
 
-
+-- Interpolate values for missing percentiles using linear interpolation
 UPDATE "survey_benchmark_data"."final outputs"."amga"
 SET "21" = ROUND((COALESCE("25", 0) - COALESCE("20", 0)) / (25 - 20) + COALESCE("20", 0), 2);
 
@@ -520,11 +524,12 @@ SET "88" = ROUND((COALESCE("90", 0) - COALESCE("75", 0)) / (90 - 75) + COALESCE(
 UPDATE "survey_benchmark_data"."final outputs"."amga"
 SET "89" = ROUND((COALESCE("90", 0) - COALESCE("75", 0)) / (90 - 75) + COALESCE("88", 0), 2);
 
+-- Standardize specialty names
 UPDATE "survey_benchmark_data"."final outputs"."amga"
 SET specialty = 'Cardiology - Advanced Heart Failure and Transplant'
 WHERE specialty = 'Advanced Heart Failure and Transplant Cardiology';
 
---pivot 4
+--pivot 4 Pivot AMGA data to long format (percentile, value)
 SELECT * INTO "survey_benchmark_data"."final outputs"."amga_pivot"
 FROM (
     SELECT survey, "survey year", "data year", specialty, region, metric, count,
@@ -624,6 +629,7 @@ UNPIVOT (
 --SC
 ALTER TABLE "survey_benchmark_data"."sc_survey_data"."sc 2020 survey 2019 data" DROP COLUMN _C15
 
+-- Combine SC data from all years into a single table
 select *
 into "survey_benchmark_data"."final outputs"."sc"
 from (SELECT * FROM "survey_benchmark_data"."sc_survey_data"."sc 2020 survey 2019 data"
@@ -636,25 +642,29 @@ SELECT * FROM "survey_benchmark_data"."sc_survey_data"."sc 2024 survey 2023 data
     )
 
 
--- Clean 2: 
+-- Clean 2: Standardize SC column names and clean up
 ALTER TABLE "survey_benchmark_data"."final outputs"."sc" RENAME COLUMN "JOB OR SPECIALTY" TO SPECIALTY;
 ALTER TABLE "survey_benchmark_data"."final outputs"."sc" RENAME COLUMN "VARIABLE" TO Metric;
 
+-- Set Level to NULL for non-standard values
 UPDATE "survey_benchmark_data"."final outputs"."sc"
 SET "Level" = CASE 
               WHEN "Level" NOT IN ('APP', 'n/a', 'Staff APP', 'Staff Physician') THEN NULL
               ELSE "Level"
              END;
 
+-- Remove rows with NULL Level
 DELETE FROM "survey_benchmark_data"."final outputs"."sc"
 WHERE "Level" IS NULL;
 
+-- Drop unnecessary columns and rename for consistency
 ALTER TABLE "survey_benchmark_data"."final outputs"."sc" DROP COLUMN "n orgs";
 ALTER TABLE "survey_benchmark_data"."final outputs"."sc" RENAME COLUMN "n incumbents" TO "count";
 ALTER TABLE "survey_benchmark_data"."final outputs"."sc" DROP COLUMN MEAN;
 ALTER TABLE "survey_benchmark_data"."final outputs"."sc" DROP COLUMN LEVEL;
 ALTER TABLE "survey_benchmark_data"."final outputs"."sc" RENAME COLUMN "cut" TO region;
 
+-- Remove unwanted region values
 DELETE FROM "survey_benchmark_data"."final outputs"."sc" 
 WHERE (Region = 'Great Lakes Subregion' OR Region = 'Hospital or Medical Center' OR Region = 'Medical Group');
 
@@ -678,6 +688,13 @@ ALTER TABLE "survey_benchmark_data"."final outputs"."mgma" DROP COLUMN "data yea
 ALTER TABLE "survey_benchmark_data"."final outputs"."mgma" DROP COLUMN "provider specialty1";
 ALTER TABLE "survey_benchmark_data"."final outputs"."mgma" DROP COLUMN "region1";
 ALTER TABLE "survey_benchmark_data"."final outputs"."mgma" DROP COLUMN "ind count1";
+
+
+-- ============================================================
+-- 🧩 Step 5: Union all survey sources into a single table
+-- ============================================================
+
+-- Union AMGA, MGMA, SC, and archived data into a unified table
 
 --Union 1
 SELECT 
@@ -736,7 +753,7 @@ SELECT
 FROM "survey_benchmark_data"."others"."archived provider survey data- national only";
 
 
--- Clean 4: 
+-- Clean 4: Normalize metric and survey names for consistency
 UPDATE  "survey_benchmark_data"."final outputs"."survey_union"
 SET "Metric" = 'Comp per wRVU'
 WHERE "Metric" IN ('Comp per wRVU', 'Compensation per wRVU', 'Compensation to wRVU ratio', 'TCC per Work RVU', 'TCC per Work RVU(2021 PFS)');
@@ -763,6 +780,11 @@ SET "Survey For Common Name" =
 --Clean 6
 
 
+-- ============================================================
+-- 🧩 Step 6: Join with common specialty mapping
+-- ============================================================
+
+-- Join survey_union with common specialty mapping table
 
 -- JOIN 1: 
 SELECT su.*, cs."common specialty", cs."survey specialty" 
@@ -771,6 +793,12 @@ FROM "survey_benchmark_data"."final outputs".survey_union su
 LEFT JOIN "survey_benchmark_data"."others"."common specialty - 2024" cs ON su.specialty = cs."survey specialty" 
 AND su."Survey For Common Name" = cs."survey";
 
+
+-- ============================================================
+-- 🧩 Step 7: Create final output tables for reporting
+-- ============================================================
+
+-- Create combined table and drop unnecessary columns
 -- Clean 5: 
 select *
 into "survey_benchmark_data"."final outputs".combined
@@ -778,6 +806,7 @@ from "survey_benchmark_data"."final outputs".survey_join;
 
 ALTER table "survey_benchmark_data"."final outputs".combined drop column specialty;
 
+-- Create MGMA_narrow for 2024 National data only
 --Clean 7
 SELECT *
 INTO "survey_benchmark_data"."final outputs".MGMA_narrow
@@ -802,12 +831,12 @@ ALTER table "survey_benchmark_data"."final outputs".MGMA_narrow drop column "cou
 DELETE FROM "survey_benchmark_data"."final outputs".MGMA_narrow
 WHERE "Value Lower" IS NULL;
 
--- Clean 8: 
+-- Clean 8: Standardize survey names in archived data
 UPDATE "survey_benchmark_data"."others"."archived provider survey data- national only"
 SET "Survey" = 'Sullivan Cotter'
 WHERE "Survey" IN ('Sulivan Cotter', 'Sullivan Cotter');
 
--- Clean 9: 
+-- Clean 9: Create Output table for AMGA 2024 National data
 SELECT *
 INTO "survey_benchmark_data"."final outputs".Output
 FROM "survey_benchmark_data"."final outputs".survey_join
@@ -823,12 +852,17 @@ ALTER table "survey_benchmark_data"."final outputs".Output rename column value t
 ALTER table "survey_benchmark_data"."final outputs".Output drop column region;
 ALTER table "survey_benchmark_data"."final outputs".Output drop column "count";
 
---No Common specialty
+--Output mismatches for specialty mapping
 SELECT "Survey For Common Name", "Survey Year", specialty, "common specialty"
 INTO "survey_benchmark_data"."final outputs".mismatch_Output
 FROM "survey_benchmark_data"."final outputs".survey_join
 WHERE "common specialty" IS NULL;
 
+-- ============================================================
+-- 🧩 Step 8: Additional cleaning and normalization for SC and AMGA
+-- ============================================================
+
+-- Standardize percentile column names for SC data
 
 -- Clean 10: 
 ALTER TABLE "survey_benchmark_data"."sc_survey_data"."sc 2022 survey 2021 data" RENAME COLUMN "10th percentile" TO "10th";
@@ -852,7 +886,7 @@ ALTER TABLE  "survey_benchmark_data"."amga_survey_data"."amga 2023 survey 2022 d
 
 -- Clean 15: 
 
--- Clean 16: 
+-- Clean 16: Standardize percentile columns in SC final output
 ALTER TABLE "survey_benchmark_data"."sc_survey_data"."sc 2023 survey 2022 data" RENAME COLUMN "10th percentile" TO "10th";
 ALTER TABLE "survey_benchmark_data"."sc_survey_data"."sc 2023 survey 2022 data" RENAME COLUMN "25th percentile" TO "25th";
 ALTER TABLE "survey_benchmark_data"."sc_survey_data"."sc 2023 survey 2022 data" RENAME COLUMN "75th percentile" TO "75th";
@@ -861,7 +895,7 @@ ALTER TABLE "survey_benchmark_data"."sc_survey_data"."sc 2023 survey 2022 data" 
 
 
 
--- Clean 17: 
+-- Clean 17: Convert SC percentile columns to numeric
 
 ALTER TABLE "survey_benchmark_data"."final outputs"."sc" RENAME COLUMN "10th" TO "10";
 ALTER TABLE "survey_benchmark_data"."final outputs"."sc" RENAME COLUMN "25th" TO "25";
@@ -869,6 +903,7 @@ ALTER TABLE "survey_benchmark_data"."final outputs"."sc" RENAME COLUMN "50th" TO
 ALTER TABLE "survey_benchmark_data"."final outputs"."sc" RENAME COLUMN "75th" TO "75";
 ALTER TABLE "survey_benchmark_data"."final outputs"."sc" RENAME COLUMN "90th" TO "90";
 
+-- Recast columns to NUMERIC(10,2) for precision
 UPDATE "survey_benchmark_data"."final outputs"."sc"
 SET "10" = CASE
     WHEN "10" ~ '^[0-9]+(\.[0-9]+)?$' THEN "10"::NUMERIC
@@ -936,7 +971,7 @@ ALTER TABLE "survey_benchmark_data"."final outputs"."sc"
 RENAME COLUMN "90_new" TO "90";
 
 
--- Add columns 21 to 89 (excluding 25, 50, and 75)
+-- Add columns for interpolated percentiles (11–89, excluding 10, 25, 50, 75, 90)
 ALTER TABLE "survey_benchmark_data"."final outputs"."sc" ADD COLUMN "11" NUMERIC(10,2);
 ALTER TABLE "survey_benchmark_data"."final outputs"."sc" ADD COLUMN "12" NUMERIC(10,2);
 ALTER TABLE "survey_benchmark_data"."final outputs"."sc" ADD COLUMN "13" NUMERIC(10,2);
@@ -1093,7 +1128,7 @@ UPDATE "survey_benchmark_data"."final outputs"."sc" SET "88" = ROUND((COALESCE("
 UPDATE "survey_benchmark_data"."final outputs"."sc" SET "89" = ROUND((COALESCE("90", 0) - COALESCE("75", 0)) / (90 - 75) + COALESCE("88", 0), 2);
 
 
---pivot 2
+--pivot 2 Pivot SC data to long format (percentile, value)
 SELECT *
 INTO "survey_benchmark_data"."final outputs"."sc_pivot"
 FROM "survey_benchmark_data"."final outputs"."sc"
