@@ -1,3 +1,18 @@
+-- ===============================================
+-- 🏥 Unified Provider Compensation Benchmarking
+-- 📄 File: HSG National Blended survey.sql
+-- 📌 Purpose: Compute weighted average compensation across MGMA, AMGA, SC
+-- 📅 Year: 2024 only
+-- 👤 Author: Nisaharan Genhatharan
+-- ===============================================
+
+-- ============================================================
+-- 🧩 Step 1: Weighted Averages Within Each Survey Group
+-- ------------------------------------------------------------
+-- For each survey (e.g., MGMA, AMGA), compute weighted averages
+-- grouped by specialty and percentile using individual counts
+-- ============================================================
+
 WITH CTE AS (
     SELECT 
         CAST('weighted average - all' AS TEXT) AS "survey",
@@ -29,6 +44,14 @@ WITH CTE AS (
         survey
 ),
 
+-- ============================================================
+-- 🧩 Step 2: Final Blend Across All Survey Types
+-- ------------------------------------------------------------
+-- Combines weighted averages across surveys into a single view
+-- For each specialty and percentile, performs second-level
+-- weighted averaging by total count across sources
+-- ============================================================
+
 CTE2 AS (
     SELECT 
         "survey",
@@ -55,6 +78,14 @@ CTE2 AS (
         "survey specialty",
         survey
 )
+
+-- ============================================================
+-- 🧩 Step 3: Output Union of Raw Weighted and Blended Results
+-- ------------------------------------------------------------
+-- Final export includes:
+-- - Raw weighted averages from original data
+-- - Final blended weighted output from CTE2
+-- ============================================================
 
 SELECT 
     "survey",
@@ -88,4 +119,8 @@ GROUP BY
 
 UNION ALL
 
-SELECT * FROM CTE2
+SELECT * FROM CTE2;
+
+-- ============================================================
+-- ✅ End of File
+-- ============================================================
