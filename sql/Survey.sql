@@ -1,5 +1,17 @@
 ---Provider Survey Flow 2024 - All Percentiles
 
+-- ===============================================
+-- 🏥 Unified Provider Compensation Benchmarking
+-- 📄 File: Survey.sql
+-- 📌 Purpose: Consolidate MGMA, AMGA, and SC surveys into unified format
+-- 📅 Years: 2019 -2024
+-- 👤 Author: Nisaharan Genhatharan
+-- ===============================================
+
+-- ============================================================
+-- 🧩 Step 1: Clean and prepare MGMA data across multiple years
+-- ============================================================
+
 --MGMA
 ALTER TABLE "survey_benchmark_data"."final outputs"."mgma 24" RENAME COLUMN new_metric TO metric
 ALTER TABLE "survey_benchmark_data"."final outputs"."mgma 23" RENAME COLUMN new_metric TO metric
@@ -71,6 +83,14 @@ SELECT
 FROM "survey_benchmark_data"."mgma_survey_data"."mgma 2020 survey 2019 data";
 
 
+-- ============================================================
+-- 🧩 Step 2: Clean and prepare AMGA data with interpolation
+-- ============================================================
+
+-- Rename columns, create standard output table
+-- Normalize column names and metrics
+-- Insert data from AMGA tables (2020–2024)
+-- Interpolate percentiles from 21–89
 
 --AMGA
 ALTER TABLE "survey_benchmark_data"."amga_survey_data"."amga 2020 survey 2019 data" RENAME COLUMN "provider count " TO "provider count"
@@ -214,21 +234,6 @@ SELECT
     CAST(REPLACE("90", ',', '') AS FLOAT), 
     region
 FROM survey_benchmark_data.amga_survey_data."amga 2020 survey 2019 data";
-
---SC
-ALTER TABLE "survey_benchmark_data"."sc_survey_data"."sc 2020 survey 2019 data" DROP COLUMN _C15
-
-select *
-into "survey_benchmark_data"."final outputs"."sc"
-from (SELECT * FROM "survey_benchmark_data"."sc_survey_data"."sc 2020 survey 2019 data"
-    union all 
-SELECT * FROM "survey_benchmark_data"."sc_survey_data"."sc 2022 survey 2021 data" 
-union all
-SELECT * FROM "survey_benchmark_data"."sc_survey_data"."sc 2023 survey 2022 data"
-union all
-SELECT * FROM "survey_benchmark_data"."sc_survey_data"."sc 2024 survey 2023 data"
-    )
-
 
 
 -- Clean 1: 
@@ -609,6 +614,28 @@ UNPIVOT (
 );
 
 
+-- ============================================================
+-- 🧩 Step 3: Clean and prepare SC (Sullivan Cotter) survey data
+-- ============================================================
+
+-- Drop unnecessary columns, standardize schema
+-- Combine multiple years into unified SC table
+
+--SC
+ALTER TABLE "survey_benchmark_data"."sc_survey_data"."sc 2020 survey 2019 data" DROP COLUMN _C15
+
+select *
+into "survey_benchmark_data"."final outputs"."sc"
+from (SELECT * FROM "survey_benchmark_data"."sc_survey_data"."sc 2020 survey 2019 data"
+    union all 
+SELECT * FROM "survey_benchmark_data"."sc_survey_data"."sc 2022 survey 2021 data" 
+union all
+SELECT * FROM "survey_benchmark_data"."sc_survey_data"."sc 2023 survey 2022 data"
+union all
+SELECT * FROM "survey_benchmark_data"."sc_survey_data"."sc 2024 survey 2023 data"
+    )
+
+
 -- Clean 2: 
 ALTER TABLE "survey_benchmark_data"."final outputs"."sc" RENAME COLUMN "JOB OR SPECIALTY" TO SPECIALTY;
 ALTER TABLE "survey_benchmark_data"."final outputs"."sc" RENAME COLUMN "VARIABLE" TO Metric;
@@ -630,6 +657,15 @@ ALTER TABLE "survey_benchmark_data"."final outputs"."sc" RENAME COLUMN "cut" TO 
 
 DELETE FROM "survey_benchmark_data"."final outputs"."sc" 
 WHERE (Region = 'Great Lakes Subregion' OR Region = 'Hospital or Medical Center' OR Region = 'Medical Group');
+
+
+-- ============================================================
+-- 🧩 Step 4: Clean and prepare MGMA data with interpolation
+-- ============================================================
+
+-- Rename columns, create standard output table
+-- Normalize column names and metrics
+-- Insert data from MGMA tables (2020–2024)
 
 -- Clean 3: 
 ALTER TABLE "survey_benchmark_data"."final outputs"."mgma" RENAME COLUMN "provider specialty" to specialty;
@@ -1163,3 +1199,8 @@ UNPIVOT (
         "80", "81", "82", "83", "84", "85", "86", "87", "88", "89", "90"
     )
 );
+
+
+-- ============================================================
+-- ✅ End of File
+-- ============================================================
